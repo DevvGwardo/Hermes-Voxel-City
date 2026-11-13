@@ -32,7 +32,7 @@ import {
   estimateRemainingBuildMs,
   summarizeTelemetryStats,
 } from "./eta_estimator";
-import { buildGeminiModelCascade } from "./gemini_models";
+import { probeAgentGateway } from "./hermes_agent_client";
 import {
   formatDayKeyInTz,
   redactSecrets,
@@ -775,7 +775,7 @@ export class WorldStore {
           : null;
       const rawErrMsg = j.errorMsg
         ? redactSecrets(j.errorMsg, [
-            this.env.GEMINI_API_KEY,
+            this.env.HERMES_AGENT_TOKEN,
             this.env.CREATOR_HMAC_SECRET,
           ])
         : null;
@@ -802,7 +802,7 @@ export class WorldStore {
               errorMsg: isSafetyRejection ? "Blocked by family-friendly safety filter." : rawErrMsg,
               errorDetail: j.errorDetail
                 ? redactSecrets(j.errorDetail, [
-                    this.env.GEMINI_API_KEY,
+                    this.env.HERMES_AGENT_TOKEN,
                     this.env.CREATOR_HMAC_SECRET,
                   ])
                 : null,
@@ -823,13 +823,7 @@ export class WorldStore {
       .map((j) => toDiag(j, "done"));
 
     return {
-      modelCascade: buildGeminiModelCascade({
-        mode: "sculpt",
-        hydrogenModel: this.env.HYDROGEN_MODEL,
-        hydrogenModels: this.env.HYDROGEN_MODELS,
-        primaryModel: this.env.ARGON_MODEL,
-        fallbackModel: this.env.FALLBACK_MODEL,
-      }),
+      modelCascade: [this.env.HERMES_AGENT_MODEL || "hermes-agent"],
       fallbackRate,
       countsLast36h: counts,
       recentFailures,
@@ -1275,11 +1269,12 @@ export class WorldStore {
         return;
       }
 
-      const apiKey = this.env.GEMINI_API_KEY;
-      if (!apiKey) {
+      const agentProbe = await probeAgentGateway(this.env);
+      if (!agentProbe.ok) {
         job.status = "failed";
         job.finishedAt = Date.now();
-        job.errorMsg = "Sculpting service requires GEMINI_API_KEY.";
+        job.errorMsg =
+          "Sculpting service requires a running Hermes agent gateway (start the Hermes agent or set HERMES_AGENT_URL / HERMES_AGENT_TOKEN).";
         job.imageBase64 = null;
         this.broadcastQueueTick();
         return;
@@ -1297,11 +1292,7 @@ export class WorldStore {
         prompt: job.prompt,
         imageBase64: job.imageBase64 ?? undefined,
         imageMimeType: job.imageMime ?? undefined,
-        apiKey,
-        hydrogenModel: this.env.HYDROGEN_MODEL,
-        hydrogenModels: this.env.HYDROGEN_MODELS,
-        primaryModel: this.env.ARGON_MODEL,
-        fallbackModel: this.env.FALLBACK_MODEL,
+        env: this.env,
       });
 
       if (!queryApproval.approved) {
@@ -1346,11 +1337,7 @@ export class WorldStore {
             this.broadcastQueueTick();
           },
         },
-        apiKey,
-        this.env.ARGON_MODEL,
-        this.env.FALLBACK_MODEL,
-        this.env.HYDROGEN_MODEL,
-        this.env.HYDROGEN_MODELS,
+        this.env,
       );
 
       if (!sculpted.ok) {
@@ -1361,7 +1348,10 @@ export class WorldStore {
             sculpted.error ||
             "Could not sculpt that creation right now — please try again.";
           job.errorDetail = sculpted.errorDetail
-            ? redactSecrets(sculpted.errorDetail, [apiKey, this.env.CREATOR_HMAC_SECRET])
+            ? redactSecrets(sculpted.errorDetail, [
+                this.env.HERMES_AGENT_TOKEN,
+                this.env.CREATOR_HMAC_SECRET,
+              ])
             : null;
           job.imageBase64 = null;
           this.onBuildPhase?.({ phase: "failed", prompt: job.prompt, x: job.reqX, z: job.reqZ });
@@ -1377,7 +1367,10 @@ export class WorldStore {
         job.nextRetryAt = Date.now() + retryDelayMs;
         job.startedAt = job.startedAt ?? t0;
         job.errorDetail = sculpted.errorDetail
-          ? redactSecrets(sculpted.errorDetail, [apiKey, this.env.CREATOR_HMAC_SECRET])
+          ? redactSecrets(sculpted.errorDetail, [
+              this.env.HERMES_AGENT_TOKEN,
+              this.env.CREATOR_HMAC_SECRET,
+            ])
           : null;
         this.broadcastQueueTick();
         setTimeout(() => {
@@ -1402,11 +1395,7 @@ export class WorldStore {
         blueprintName: sculpted.blueprint.name,
         blueprintDescription: sculpted.blueprint.description,
         extractedSubject: sculpted.extractedSubject,
-        apiKey,
-        hydrogenModel: this.env.HYDROGEN_MODEL,
-        hydrogenModels: this.env.HYDROGEN_MODELS,
-        primaryModel: this.env.ARGON_MODEL,
-        fallbackModel: this.env.FALLBACK_MODEL,
+        env: this.env,
       });
 
       if (!postApproval.approved) {
@@ -1468,10 +1457,8 @@ export class WorldStore {
       });
       this.broadcastQueueTick();
     } catch (err) {
-      const apiKey = this.env.GEMINI_API_KEY;
       safeLogError("build_queue_worker_retrying", err, [
-        apiKey,
-        this.env.GEMINI_API_KEY,
+        this.env.HERMES_AGENT_TOKEN,
         this.env.CREATOR_HMAC_SECRET,
       ]);
       if (job.retryCount >= 3) {
@@ -1490,8 +1477,7 @@ export class WorldStore {
       job.retryCount = nextRetries;
       job.nextRetryAt = Date.now() + retryDelayMs;
       job.errorDetail = redactSecrets(err, [
-        apiKey,
-        this.env.GEMINI_API_KEY,
+        this.env.HERMES_AGENT_TOKEN,
         this.env.CREATOR_HMAC_SECRET,
       ]);
       this.broadcastQueueTick();
@@ -1909,11 +1895,6 @@ export class WorldStore {
 
   private async drainIntegrationQueue(): Promise<void> {
     if (this.integrationRunning) return;
-    const apiKey = this.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      this.integrationQueue.clear();
-      return;
-    }
 
     this.integrationRunning = true;
     try {
@@ -1926,11 +1907,7 @@ export class WorldStore {
           const patch = await integrateCreationWithArgon(
             this.readBaseWorld(),
             nextId,
-            apiKey,
-            this.env.ARGON_MODEL,
-            this.env.FALLBACK_MODEL,
-            this.env.HYDROGEN_MODEL,
-            this.env.HYDROGEN_MODELS,
+            this.env,
           );
           if (patch) {
             this.applyWorldPatch(patch);
@@ -1943,8 +1920,7 @@ export class WorldStore {
           }
         } catch (err) {
           safeLogError("background_integration", err, [
-            apiKey,
-            this.env.GEMINI_API_KEY,
+            this.env.HERMES_AGENT_TOKEN,
             this.env.CREATOR_HMAC_SECRET,
           ]);
         }
@@ -2062,9 +2038,9 @@ export class WorldStore {
       });
     }
 
-    const apiKey = this.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return { ok: false, note: "Director unavailable" };
+    const agentProbe = await probeAgentGateway(this.env);
+    if (!agentProbe.ok) {
+      return { ok: false, note: "Director unavailable (no Hermes agent gateway)" };
     }
 
     const world = this.readBaseWorld();
@@ -2093,11 +2069,7 @@ export class WorldStore {
     try {
       const patch = await weaveWorldCronWithArgon(
         world,
-        apiKey,
-        this.env.ARGON_MODEL,
-        this.env.FALLBACK_MODEL,
-        this.env.HYDROGEN_MODEL,
-        this.env.HYDROGEN_MODELS,
+        this.env,
         activeIncidents,
       );
       if (patch) {
@@ -2114,8 +2086,7 @@ export class WorldStore {
       }
     } catch (err) {
       safeLogError("cron_weaver", err, [
-        apiKey,
-        this.env.GEMINI_API_KEY,
+        this.env.HERMES_AGENT_TOKEN,
         this.env.CREATOR_HMAC_SECRET,
       ]);
       return { ok: false, note: "Cron weave skipped due to transient upstream error" };

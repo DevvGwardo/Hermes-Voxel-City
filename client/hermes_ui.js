@@ -669,7 +669,7 @@ export function createHermesWorkspaceController({
         }
       }
 
-      // 2. Otherwise dispatch via server HermesRuntimeHub (local HTTP daemon or Gemini hybrid swarm)
+      // 2. Otherwise dispatch via server HermesRuntimeHub (local HTTP daemon or gateway hybrid swarm)
       const res = await fetch("/api/hermes/dispatch", {
         method: "POST",
         headers: buildHeaders({

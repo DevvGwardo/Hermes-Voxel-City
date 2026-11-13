@@ -1,5 +1,6 @@
 import zlib from "node:zlib";
-import { callGeminiWithFallbacks } from "./gemini_models";
+import type { AppEnv } from "./env_types";
+import { callHermesAgentForJson } from "./hermes_agent_client";
 import { sanitizePlainText } from "./security";
 import type { VoxelBlueprint } from "./types";
 import { rasterizeCompleteBlueprint, VOX_PALETTE } from "./voxel_dsl";
@@ -724,12 +725,7 @@ export async function reviewBlueprintWithCritic(opts: {
   promptText: string;
   userImageBase64?: string;
   userImageMimeType?: string;
-  apiKey: string;
-  hydrogenModel?: string;
-  hydrogenModels?: string | readonly string[];
-  primaryModel?: string;
-  fallbackModel?: string;
-  overrideModels?: readonly string[];
+  env: AppEnv;
 }): Promise<CriticReviewResult> {
   const contactSheetPngBase64 = await renderBlueprintContactSheetPng(opts.blueprint);
   const structuralSummary = summarizeBlueprintCrossSections(opts.blueprint);
@@ -752,21 +748,15 @@ export async function reviewBlueprintWithCritic(opts: {
       ? [{ mimeType: opts.userImageMimeType, data: opts.userImageBase64 }]
       : undefined;
 
-  const res = await callGeminiWithFallbacks({
-    apiKey: opts.apiKey,
+  const res = await callHermesAgentForJson({
+    env: opts.env,
     mode: "critic",
-    hydrogenModel: opts.hydrogenModel,
-    hydrogenModels: opts.hydrogenModels,
-    primaryModel: opts.primaryModel,
-    fallbackModel: opts.fallbackModel,
-    overrideModels: opts.overrideModels,
     systemPrompt: CRITIC_SYSTEM_PROMPT,
     userText,
     imageBase64: contactSheetPngBase64,
     imageMimeType: "image/png",
     extraImages,
     temperature: 0.15,
-    thinkingBudget: 512,
     maxOutputTokens: 1536,
   });
 

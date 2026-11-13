@@ -2,7 +2,7 @@
  * Adaptive Build Telemetry & Survival-Conditional ETA Micro-Engine
  *
  * Learns from real completed GeminIsland builds persisted in WorldDO SQLite (`build_telemetry`),
- * stratified by prompt/image complexity and recency-weighted so recent Gemini API speed shifts
+ * stratified by prompt/image complexity and recency-weighted so recent agent speed shifts
  * adapt within a few builds.
  *
  * Eliminates early countdown stalls via two mechanisms:

@@ -23,9 +23,9 @@ function getRuntimeHmacSecret(env?: AppEnv): string {
   const configured = env?.CREATOR_HMAC_SECRET?.trim();
   if (configured) return configured;
   if (!runtimeHmacSecret) {
-    // Derive deterministic per-key secret if GEMINI_API_KEY exists so restarts keep visitor cookies valid,
-    // otherwise generate a cryptographic random 256-bit key.
-    const seed = env?.GEMINI_API_KEY?.trim();
+    // Derive a deterministic per-token secret if HERMES_AGENT_TOKEN exists so restarts keep
+    // visitor cookies valid, otherwise generate a cryptographic random 256-bit key.
+    const seed = env?.HERMES_AGENT_TOKEN?.trim();
     if (seed) {
       runtimeHmacSecret = nodeCrypto
         .createHmac("sha256", "geminisland-visitor-hmac-v1")
@@ -118,10 +118,18 @@ export function isAllowedAppletOrigin(origin: string): boolean {
   if (ALLOWED_STATIC_ORIGINS.has(origin)) return true;
   try {
     const parsed = new URL(origin);
+    const hostname = parsed.hostname.toLowerCase();
+    // Local self-hosted loopback origins: this app is designed to run next to a
+    // local Hermes agent gateway, so plain-http localhost is a first-class origin.
+    if (
+      parsed.protocol === "http:" &&
+      (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]")
+    ) {
+      return true;
+    }
     if (parsed.protocol !== "https:") {
       return false;
     }
-    const hostname = parsed.hostname.toLowerCase();
     if (
       hostname === "ai.studio" ||
       hostname.endsWith(".ai.studio") ||

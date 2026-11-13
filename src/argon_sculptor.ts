@@ -1,12 +1,11 @@
 import { checkIslandContentPolicy } from "./content_policy";
+import type { AppEnv } from "./env_types";
 import {
-  buildGeminiModelCascade,
-  callGeminiWithFallbacks,
-  DEFAULT_HYDROGEN_MODELS,
+  type AgentAttemptRecord,
+  type AgentCallMode,
+  callHermesAgentForJson,
   extractJsonObject,
-  type GeminiAttemptRecord,
-  type GeminiCallMode,
-} from "./gemini_models";
+} from "./hermes_agent_client";
 import { redactSecrets, safeLogError, safeLogWarn, sanitizePlainText } from "./security";
 import type { VoxelBlueprint } from "./types";
 import {
@@ -18,7 +17,7 @@ import { type CriticReviewResult, reviewBlueprintWithCritic } from "./voxel_crit
 import { normalizeAndGroundBlueprint } from "./voxel_dsl";
 import { normalizeFactualDescription } from "./town_planner";
 
-export { buildGeminiModelCascade, extractJsonObject };
+export { extractJsonObject };
 
 export interface SculptRequest {
   prompt?: string;
@@ -38,7 +37,7 @@ export interface SculptTelemetry {
   criticAttempts?: number;
   criticScore?: number;
   criticApproved?: boolean;
-  attempts?: GeminiAttemptRecord[];
+  attempts?: AgentAttemptRecord[];
 }
 
 export type SculptResult =
@@ -68,33 +67,27 @@ export function quickSafetyPrecheck(text: string): string | null {
   return null;
 }
 
-export async function callGeminiArgon(opts: {
-  apiKey: string;
-  mode?: GeminiCallMode;
-  hydrogenModel?: string;
-  hydrogenModels?: string | readonly string[];
-  primaryModel?: string;
-  fallbackModel?: string;
-  overrideModels?: readonly string[];
+export async function callAgentArgon(opts: {
+  env: AppEnv;
+  mode?: AgentCallMode;
   systemPrompt: string;
   userText: string;
   imageBase64?: string;
   imageMimeType?: string;
   extraImages?: { mimeType: string; data: string }[];
   temperature?: number;
-  thinkingBudget?: number;
   maxOutputTokens?: number;
   maxCascadeMs?: number;
   validateJson?: (json: Record<string, unknown>) => string | null;
 }): Promise<{
   json: Record<string, unknown>;
   modelUsed: string;
-  attempts: GeminiAttemptRecord[];
+  attempts: AgentAttemptRecord[];
 }> {
-  return callGeminiWithFallbacks(opts);
+  return callHermesAgentForJson(opts);
 }
 
-const SCULPTOR_SYSTEM_PROMPT = `You are Master Voxel Sculptor Hydrogen, creating breathtaking, tactile, high-definition 3D MagicaVoxel miniatures for a sunlit, family-friendly shared grass meadow world.
+const SCULPTOR_SYSTEM_PROMPT = `You are the Master Voxel Sculptor Argon, creating breathtaking, tactile, high-definition 3D MagicaVoxel miniatures for a sunlit, family-friendly shared grass meadow world.
 
 1. SAFETY, BRAND NEUTRALITY & NON-POLITICAL STEWARDSHIP GATE FIRST:
    - Inspect both any uploaded image and any text inside <untrusted_user_description>.
@@ -229,11 +222,7 @@ const SCULPTOR_SYSTEM_PROMPT = `You are Master Voxel Sculptor Hydrogen, creating
 
 export async function sculptWithArgon(
   req: SculptRequest,
-  apiKey: string,
-  primaryModel?: string,
-  fallbackModel?: string,
-  hydrogenModel?: string,
-  hydrogenModels?: string | readonly string[],
+  env: AppEnv,
 ): Promise<SculptResult> {
   const promptText = sanitizePlainText(req.prompt, 480, true);
   const hasImage = Boolean(req.imageBase64 && req.imageMimeType);
@@ -273,22 +262,13 @@ export async function sculptWithArgon(
   };
 
   const tStart = Date.now();
-  const expectedPrimary = (hydrogenModel?.trim() || DEFAULT_HYDROGEN_MODELS[0]).replace(
-    /^models\//,
-    "",
-  );
-  let first: Awaited<ReturnType<typeof callGeminiArgon>> | null = null;
+  let first: Awaited<ReturnType<typeof callAgentArgon>> | null = null;
   let lastRound1Err: unknown = null;
   for (let pass = 0; pass < 2; pass++) {
     try {
-      first = await callGeminiArgon({
-        apiKey,
+      first = await callAgentArgon({
+        env,
         mode: "sculpt",
-        hydrogenModel,
-        hydrogenModels,
-        primaryModel,
-        fallbackModel,
-        overrideModels: req.overrideModels,
         systemPrompt: SCULPTOR_SYSTEM_PROMPT,
         userText: userDirective,
         imageBase64: req.imageBase64,
@@ -297,14 +277,14 @@ export async function sculptWithArgon(
           ? { extraImages: [{ mimeType: "image/png", data: req.initialCriticRenderPngBase64 }] }
           : {}),
         temperature: 0.42,
-        thinkingBudget: 1024,
         maxOutputTokens: 32_768,
+        maxCascadeMs: 1_500_000,
         validateJson: validateSculptBlueprintJson,
       });
       break;
     } catch (err) {
       lastRound1Err = err;
-      safeLogWarn("sculpt_round1_pass_failed", err, [apiKey]);
+      safeLogWarn("sculpt_round1_pass_failed", err, [env.HERMES_AGENT_TOKEN]);
       if (pass === 0) {
         await new Promise((r) => setTimeout(r, 1200));
       }
@@ -312,16 +292,16 @@ export async function sculptWithArgon(
   }
 
   if (!first) {
-    safeLogError("sculpt_round1_deferred_retry", lastRound1Err, [apiKey]);
-    const redactedErr = redactSecrets(lastRound1Err, [apiKey]);
-    const isAuthFailure = /API_KEY_INVALID|API key not valid|invalid api key|key not found/i.test(
+    safeLogError("sculpt_round1_deferred_retry", lastRound1Err, [env.HERMES_AGENT_TOKEN]);
+    const redactedErr = redactSecrets(lastRound1Err, [env.HERMES_AGENT_TOKEN]);
+    const isAuthFailure = /HTTP 40[13]|HERMES_AGENT_TOKEN|gateway_auth|unauthorized/i.test(
       redactedErr,
     );
     if (isAuthFailure) {
       return {
         ok: false,
         retryable: false,
-        error: "Server GEMINI_API_KEY secret is invalid or not attached yet — check Settings > Secrets.",
+        error: "Hermes agent gateway rejected the request — check HERMES_AGENT_TOKEN.",
         errorDetail: redactedErr,
       };
     }
@@ -334,8 +314,8 @@ export async function sculptWithArgon(
   }
 
   const round1Ms = Math.max(1, Date.now() - tStart);
-  const allAttempts: GeminiAttemptRecord[] = [...first.attempts];
-  let usedFallback = first.modelUsed !== expectedPrimary;
+  const allAttempts: AgentAttemptRecord[] = [...first.attempts];
+  const usedFallback = false;
   let hadRefinementPass = false;
   let lastModelUsed = first.modelUsed;
 
@@ -374,15 +354,10 @@ export async function sculptWithArgon(
         promptText,
         userImageBase64: req.imageBase64,
         userImageMimeType: req.imageMimeType,
-        apiKey,
-        hydrogenModel,
-        hydrogenModels,
-        primaryModel,
-        fallbackModel,
-        overrideModels: req.overrideModels,
+        env,
       });
     } catch (err) {
-      safeLogError("voxel_critic_review", err, [apiKey]);
+      safeLogError("voxel_critic_review", err, [env.HERMES_AGENT_TOKEN]);
     }
 
     return {
@@ -454,16 +429,11 @@ export async function sculptWithArgon(
       );
     }
 
-    let retryRes: Awaited<ReturnType<typeof callGeminiArgon>>;
+    let retryRes: Awaited<ReturnType<typeof callAgentArgon>>;
     try {
-      retryRes = await callGeminiArgon({
-        apiKey,
+      retryRes = await callAgentArgon({
+        env,
         mode: "sculpt",
-        hydrogenModel,
-        hydrogenModels,
-        primaryModel,
-        fallbackModel,
-        overrideModels: req.overrideModels,
         systemPrompt: SCULPTOR_SYSTEM_PROMPT,
         userText: `${baseDirective}\n\nIMPORTANT 3D REVIEWER & ORCHESTRATOR REBUILD DIRECTIVE (Attempt ${retry + 1}):\n${notes.join("\n\n")}\n\nPrevious rejected JSON (rewrite/fix ops & geometry completely where needed):\n${JSON.stringify(current.rawJson)}`,
         imageBase64: req.imageBase64,
@@ -472,21 +442,18 @@ export async function sculptWithArgon(
           ? { extraImages: [{ mimeType: "image/png", data: current.critic.contactSheetPngBase64 }] }
           : {}),
         temperature: 0.35,
-        thinkingBudget: 1536,
         maxOutputTokens: 40_960,
+        maxCascadeMs: 1_500_000,
         validateJson: validateSculptBlueprintJson,
       });
     } catch (retryErr) {
       // Never discard a valid Round-1 3D creation if a Round-2 refinement pass encounters an upstream outage
-      safeLogWarn("sculpt_refinement_degraded_to_round1", retryErr, [apiKey]);
+      safeLogWarn("sculpt_refinement_degraded_to_round1", retryErr, [env.HERMES_AGENT_TOKEN]);
       break;
     }
 
     allAttempts.push(...retryRes.attempts);
     lastModelUsed = retryRes.modelUsed;
-    if (retryRes.modelUsed !== expectedPrimary) {
-      usedFallback = true;
-    }
     if (retryRes.json.safe === false) {
       return { ok: false, unsafe: true, error: "Please try creating something family-friendly." };
     }
@@ -567,5 +534,3 @@ export async function sculptWithArgon(
     },
   };
 }
-
-export const sculptWithHydrogen = sculptWithArgon;
