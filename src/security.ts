@@ -118,10 +118,18 @@ export function isAllowedAppletOrigin(origin: string): boolean {
   if (ALLOWED_STATIC_ORIGINS.has(origin)) return true;
   try {
     const parsed = new URL(origin);
+    const hostname = parsed.hostname.toLowerCase();
+    // Local self-hosted loopback origins: this app is designed to run next to a
+    // local Hermes agent gateway, so plain-http localhost is a first-class origin.
+    if (
+      parsed.protocol === "http:" &&
+      (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]")
+    ) {
+      return true;
+    }
     if (parsed.protocol !== "https:") {
       return false;
     }
-    const hostname = parsed.hostname.toLowerCase();
     if (
       hostname === "ai.studio" ||
       hostname.endsWith(".ai.studio") ||
