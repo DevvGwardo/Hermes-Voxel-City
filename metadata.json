@@ -1,6 +1,6 @@
 {
-  "name": "Remix GeminIsland",
-  "description": "3D voxel city where anyone can sculpt interactive creations using local Hermes agents and then explore them live, together.",
+  "name": "Hermes Voxel City",
+  "description": "A shared 3D voxel island powered entirely by a local Hermes agent — vision-reviewed sculpting, a live agent swarm, and multiplayer exploration.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

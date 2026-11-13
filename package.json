@@ -1,8 +1,29 @@
 {
   "name": "hermes-voxel-city",
-  "private": true,
   "version": "1.0.0",
+  "private": true,
   "type": "module",
+  "description": "A shared 3D voxel island powered entirely by a local Hermes agent — vision-reviewed sculpting, a live agent swarm, and multiplayer exploration. No cloud AI keys.",
+  "keywords": [
+    "voxel",
+    "threejs",
+    "hermes-agent",
+    "local-ai",
+    "ai-agents",
+    "multiplayer",
+    "typescript",
+    "vite"
+  ],
+  "license": "MIT",
+  "author": "DevvGwardo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DevvGwardo/Hermes-Voxel-City.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DevvGwardo/Hermes-Voxel-City/issues"
+  },
+  "homepage": "https://github.com/DevvGwardo/Hermes-Voxel-City#readme",
   "scripts": {
     "predev": "[ -d node_modules/.bin ] || bun install || npm install",
     "dev": "tsx server.ts",

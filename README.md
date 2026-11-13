@@ -2,6 +2,13 @@
 
 <p align="center"><img src="docs/branding/logo.jpg" alt="Hermes Voxel City logo" width="220"></p>
 
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-blue">
+  <img alt="Bun" src="https://img.shields.io/badge/runtime-Bun%20%7C%20Node-black">
+  <img alt="AI backend" src="https://img.shields.io/badge/AI-100%25%20local%20agent-orange">
+</p>
+
 A shared 3D voxel island where your **local Hermes agent** sculpts creations, reviews them with vision, and coordinates a live sub-agent swarm — **100% local AI, no cloud AI keys**.
 
 Every AI call in the app (sculpting, world-weaving, critics, minigame opponents, the agent swarm) routes through the OpenAI-compatible endpoint of a locally running [Hermes agent gateway](https://hermes-agent.nousresearch.com/docs). No Google/Gemini, no external model APIs.
@@ -63,3 +70,7 @@ See `.env.example`.
 ## Stack
 
 Vite · React · three.js · ws · tsx server (TypeScript, no database — world state is a JSON file)
+
+## License
+
+[MIT](LICENSE) — © DevvGwardo
