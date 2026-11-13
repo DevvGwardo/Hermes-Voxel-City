@@ -8,6 +8,8 @@ Every AI call in the app (sculpting, world-weaving, critics, minigame opponents,
 
 ![World overview](docs/screenshots/01-world-overview.png)
 
+![How it works](docs/branding/infographic.jpg)
+
 ![Agent swarm panel](docs/screenshots/04-hermes-agent-panel.png)
 
 ## What's inside
