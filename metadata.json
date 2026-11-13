@@ -1,8 +1,6 @@
 {
   "name": "Remix GeminIsland",
-  "description": "3D voxel island where anyone can sculpt interactive creations using Gemini 4 Hydrogen and then explore them live, together.",
+  "description": "3D voxel city where anyone can sculpt interactive creations using local Hermes agents and then explore them live, together.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": []
 }

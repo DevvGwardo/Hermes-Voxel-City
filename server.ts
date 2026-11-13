@@ -8,7 +8,8 @@ import { checkIslandContentPolicy } from "./src/content_policy";
 import { type AppEnv, resolveRuntimeEnv } from "./src/env_types";
 import { HermesRuntimeHub } from "./src/hermes_runtime";
 import { resolveWorldLiveFeeds } from "./src/live_feeds";
-import { chooseMoveWithGeminiFlashLite, validateMinigameRequest } from "./src/minigame_ai";
+import { chooseMoveWithAgent, validateMinigameRequest } from "./src/minigame_ai";
+import { probeAgentGateway } from "./src/hermes_agent_client";
 import { MultiplayerHub } from "./src/multiplayer_hub";
 import {
   buildSecurityHeaders,
@@ -395,14 +396,6 @@ export async function startServer(customPort?: number) {
         if (csrfErr) {
           return jsonResponse(request, { ok: false, error: csrfErr }, 403);
         }
-        const apiKey = env.GEMINI_API_KEY;
-        if (!apiKey) {
-          return jsonResponse(
-            request,
-            { ok: false, error: "Gemini opponent is temporarily unavailable." },
-            503,
-          );
-        }
         const id = await resolveVisitorIdentity(request, env);
         if (!allowMinigameMove(id.ipHash)) {
           return jsonResponse(
@@ -419,9 +412,8 @@ export async function startServer(customPort?: number) {
         if (!validated.ok) {
           return jsonResponse(request, { ok: false, error: validated.error }, 400);
         }
-        const result = await chooseMoveWithGeminiFlashLite({
-          apiKey,
-          configuredModel: env.MINIGAME_MODEL,
+        const result = await chooseMoveWithAgent({
+          env,
           req: validated.req,
           validMoves: validated.validMoves,
         });
@@ -436,11 +428,14 @@ export async function startServer(customPort?: number) {
         if (csrfErr) {
           return jsonResponse(request, { ok: false, error: csrfErr }, 403);
         }
-        const apiKey = env.GEMINI_API_KEY;
-        if (!apiKey) {
+        const agentProbe = await probeAgentGateway(env);
+        if (!agentProbe.ok) {
           return jsonResponse(
             request,
-            { ok: false, error: "Sculpting service requires GEMINI_API_KEY." },
+            {
+              ok: false,
+              error: `Sculpting service requires a running Hermes agent gateway. ${agentProbe.error ?? ""}`.trim(),
+            },
             503,
           );
         }
@@ -722,7 +717,7 @@ export async function startServer(customPort?: number) {
 
       return jsonResponse(request, { ok: false, error: "Not found." }, 404);
     } catch (err) {
-      safeLogError("api_unhandled", err, [env.GEMINI_API_KEY, env.CREATOR_HMAC_SECRET]);
+      safeLogError("api_unhandled", err, [env.HERMES_AGENT_TOKEN, env.CREATOR_HMAC_SECRET]);
       return jsonResponse(request, { ok: false, error: "Internal server error." }, 500);
     }
   }

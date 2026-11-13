@@ -179,8 +179,8 @@ function buildTallyPipMesh(color, emit = 1.2) {
   return buildVoxelMesh(v, { scale: 0.055, depthLayer: 4 });
 }
 
-// ─── Live Gemini Flash-Lite Opponent Client (/api/minigame-move) ─────────────
-async function requestGeminiFlashLiteMove(payload, fallbackValidMoves) {
+// ─── Live Hermes Park AI Opponent Client (/api/minigame-move) ─────────────
+async function requestAgentMove(payload, fallbackValidMoves) {
   const minBeat = new Promise((r) => setTimeout(r, 260));
   if (typeof fetch !== "function" || typeof window === "undefined") {
     await minBeat;
@@ -211,7 +211,7 @@ async function requestGeminiFlashLiteMove(payload, fallbackValidMoves) {
         return {
           move: data.move,
           quip: typeof data.quip === "string" ? data.quip.trim() : "",
-          modelUsed: data.modelUsed || "gemini-flash-lite",
+          modelUsed: data.modelUsed || "hermes-agent",
         };
       }
     }
@@ -225,7 +225,7 @@ async function requestGeminiFlashLiteMove(payload, fallbackValidMoves) {
   };
 }
 
-// ─── 1. Naughts & Crosses (Tic-Tac-Toe) vs Gemini Flash-Lite ─────────────────
+// ─── 1. Naughts & Crosses (Tic-Tac-Toe) vs Hermes Park AI ─────────────────
 const TTT_LINES = [
   [0, 1, 2],
   [3, 4, 5],
@@ -399,30 +399,30 @@ function createTicTacToeController(creation, group, onEvent) {
         playerWins++;
         rebuildTally();
         playArpeggio([523.25, 659.25, 783.99, 1046.5], 0.075, 0.22, "triangle", 0.085);
-        return `Naughts & Crosses — You beat Gemini Flash-Lite! (${playerWins}–${cpuWins})`;
+        return `Naughts & Crosses — You beat Hermes Park AI! (${playerWins}–${cpuWins})`;
       } else if (outcome.winner === 2) {
         cpuWins++;
         rebuildTally();
         playArpeggio([440, 392, 329.63], 0.09, 0.22, "sawtooth", 0.055);
-        return `Naughts & Crosses — Gemini Flash-Lite wins! (${playerWins}–${cpuWins})${quipSuffix}`;
+        return `Naughts & Crosses — Hermes Park AI wins! (${playerWins}–${cpuWins})${quipSuffix}`;
       } else {
         playArpeggio([440, 523.25, 440], 0.08, 0.18, "triangle", 0.065);
-        return `Naughts & Crosses — Draw vs Gemini Flash-Lite!${quipSuffix}`;
+        return `Naughts & Crosses — Draw vs Hermes Park AI!${quipSuffix}`;
       }
     }
     syncBoardMeshes();
     playTone(who === 1 ? 587.33 : 440, 0.11, "triangle", 0.075);
-    return quip ? `Gemini Flash-Lite — "${quip}"` : null;
+    return quip ? `Hermes Park AI — "${quip}"` : null;
   }
 
-  function askGeminiFlashLiteTurn() {
+  function askAgentTurn() {
     const empty = [];
     for (let i = 0; i < 9; i++) if (board[i] === 0) empty.push(i);
     if (!empty.length) return;
     const myToken = ++turnToken;
     cpuThinking = true;
     thinkOrb.visible = true;
-    requestGeminiFlashLiteMove(
+    requestAgentMove(
       {
         game: "tic_tac_toe",
         board: [...board],
@@ -468,7 +468,7 @@ function createTicTacToeController(creation, group, onEvent) {
         resetBoard();
         if (idx >= 0 && idx < 9) {
           const msg = placeMark(idx, 1);
-          if (!gameOver) askGeminiFlashLiteTurn();
+          if (!gameOver) askAgentTurn();
           return msg;
         }
         return null;
@@ -476,7 +476,7 @@ function createTicTacToeController(creation, group, onEvent) {
       if (cpuThinking) return null;
       if (idx < 0 || idx >= 9 || board[idx] !== 0) return null;
       const msg = placeMark(idx, 1);
-      if (!gameOver) askGeminiFlashLiteTurn();
+      if (!gameOver) askAgentTurn();
       return msg;
     },
     step(dt, t) {
@@ -521,7 +521,7 @@ function createTicTacToeController(creation, group, onEvent) {
   };
 }
 
-// ─── 2. Connect Four (7x6 Vertical Drop Frame vs Gemini Flash-Lite) ──────────
+// ─── 2. Connect Four (7x6 Vertical Drop Frame vs Hermes Park AI) ──────────
 function checkConnectFourWin(grid) {
   // grid[col][row], 7 cols x 6 rows (row 0 = bottom)
   const dirs = [
@@ -669,24 +669,24 @@ function createConnectFourController(creation, group, onEvent) {
       const quipSuffix = quip ? ` · "${quip}"` : "";
       if (outcome.winner === 1) {
         playArpeggio([523.25, 659.25, 783.99, 1046.5], 0.08, 0.24, "triangle", 0.085);
-        return "Connect Four — Four in a row! You beat Gemini Flash-Lite!";
+        return "Connect Four — Four in a row! You beat Hermes Park AI!";
       }
       if (outcome.winner === 2) {
         playArpeggio([440, 349.23, 293.66], 0.09, 0.24, "sawtooth", 0.055);
-        return `Connect Four — Gemini Flash-Lite connected four!${quipSuffix}`;
+        return `Connect Four — Hermes Park AI connected four!${quipSuffix}`;
       }
-      return `Connect Four — Full frame draw vs Gemini Flash-Lite!${quipSuffix}`;
+      return `Connect Four — Full frame draw vs Hermes Park AI!${quipSuffix}`;
     }
-    return quip ? `Gemini Flash-Lite — "${quip}"` : null;
+    return quip ? `Hermes Park AI — "${quip}"` : null;
   }
 
-  function askGeminiFlashLiteColumn() {
+  function askAgentColumn() {
     const validCols = [0, 1, 2, 3, 4, 5, 6].filter((col) => grid[col].indexOf(0) !== -1);
     if (!validCols.length) return;
     const myToken = ++turnToken;
     cpuThinking = true;
     thinkDisc.visible = true;
-    requestGeminiFlashLiteMove(
+    requestAgentMove(
       {
         game: "connect_four",
         grid: grid.map((col) => [...col]),
@@ -731,14 +731,14 @@ function createConnectFourController(creation, group, onEvent) {
         clearGame();
         if (c >= 0 && c < 7) {
           const msg = dropInColumn(c, 1);
-          if (!gameOver) askGeminiFlashLiteColumn();
+          if (!gameOver) askAgentColumn();
           return msg;
         }
         return null;
       }
       if (cpuThinking || c < 0 || c >= 7 || grid[c].indexOf(0) === -1) return null;
       const msg = dropInColumn(c, 1);
-      if (!gameOver) askGeminiFlashLiteColumn();
+      if (!gameOver) askAgentColumn();
       return msg;
     },
     step(dt, t) {

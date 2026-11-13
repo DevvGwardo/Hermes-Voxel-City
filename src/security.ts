@@ -23,9 +23,9 @@ function getRuntimeHmacSecret(env?: AppEnv): string {
   const configured = env?.CREATOR_HMAC_SECRET?.trim();
   if (configured) return configured;
   if (!runtimeHmacSecret) {
-    // Derive deterministic per-key secret if GEMINI_API_KEY exists so restarts keep visitor cookies valid,
-    // otherwise generate a cryptographic random 256-bit key.
-    const seed = env?.GEMINI_API_KEY?.trim();
+    // Derive a deterministic per-token secret if HERMES_AGENT_TOKEN exists so restarts keep
+    // visitor cookies valid, otherwise generate a cryptographic random 256-bit key.
+    const seed = env?.HERMES_AGENT_TOKEN?.trim();
     if (seed) {
       runtimeHmacSecret = nodeCrypto
         .createHmac("sha256", "geminisland-visitor-hmac-v1")

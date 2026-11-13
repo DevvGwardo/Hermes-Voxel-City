@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AppEnv } from "./env_types";
-import { callGeminiWithFallbacks } from "./gemini_models";
+import { callHermesAgentForJson } from "./hermes_agent_client";
 import { redactSecrets, sanitizePlainText } from "./security";
 import type {
   HermesAgentSource,
@@ -446,11 +446,15 @@ export class HermesRuntimeHub {
     let lastError: string | null = null;
 
     const tryJsonFetch = async (urlPath: string, timeoutMs = 1100): Promise<Record<string, unknown> | null> => {
+      const token = env.HERMES_AGENT_TOKEN?.trim();
       try {
         const res = await fetch(`${validated}${urlPath}`, {
           method: "GET",
           signal: AbortSignal.timeout(timeoutMs),
-          headers: { accept: "application/json" },
+          headers: {
+            accept: "application/json",
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          },
         });
         if (!res.ok) return null;
         const ct = res.headers.get("content-type") || "";
@@ -971,7 +975,7 @@ export class HermesRuntimeHub {
 
     const subAgent = this.upsertExternalSubAgent(payload, "island_runtime");
 
-    // Run real local daemon or Gemini-backed sub-agent execution in background
+    // Run the real local daemon or gateway-backed sub-agent execution in background
     void this.executeSingleSubAgent(subAgent.id, task, role, parentAgent || undefined);
 
     return {
@@ -1014,7 +1018,12 @@ export class HermesRuntimeHub {
           const res = await fetch(`${this.leadAgent.endpoint}/v1/chat/completions`, {
             method: "POST",
             signal: AbortSignal.timeout(25_000),
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              ...(env.HERMES_AGENT_TOKEN?.trim()
+                ? { authorization: `Bearer ${env.HERMES_AGENT_TOKEN!.trim()}` }
+                : {}),
+            },
             body: JSON.stringify({
               model: this.leadAgent.model || "hermes-agent",
               messages: [
@@ -1052,34 +1061,12 @@ export class HermesRuntimeHub {
         }
       }
 
-      // 2. Server-side Hermes sub-agent execution via Gemini API if configured
-      const apiKey = env.GEMINI_API_KEY;
-      if (!apiKey) {
-        setStage(
-          "error",
-          0,
-          "runtime_check",
-          `No local Hermes HTTP listener detected at ${this.leadAgent.endpoint} and no server GEMINI_API_KEY is configured. Start a local Hermes daemon or connect via the Local tab.`,
-        );
-        this.appendLog({
-          agentId,
-          agentName: this.subAgents.find((a) => a.id === agentId)?.name || role,
-          role,
-          kind: "error",
-          message: `Could not execute "${task.slice(0, 60)}" — no local Hermes endpoint or server key.`,
-        });
-        this.scheduleBroadcast();
-        return;
-      }
-
+      // 2. Server-side Hermes sub-agent execution via the configured local agent gateway
       setStage("executing", 55, `${role}_reason`);
-      const res = await callGeminiWithFallbacks({
-        apiKey,
+      const res = await callHermesAgentForJson({
+        env,
         mode: "director",
-        hydrogenModel: env.HYDROGEN_MODEL,
-        hydrogenModels: env.HYDROGEN_MODELS,
-        primaryModel: env.ARGON_MODEL,
-        fallbackModel: env.FALLBACK_MODEL,
+        callerLabel: `subagent_${role}`,
         systemPrompt: `You are a Hermes Agent sub-agent operating in the "${role}" role inside the Hermes Island workspace.${parentHint}
 Return STRICT JSON:
 {
@@ -1089,7 +1076,7 @@ Return STRICT JSON:
 }`,
         userText: `Sub-agent role: ${role}\nAssigned task: ${task}`,
         maxOutputTokens: 2048,
-        maxCascadeMs: 25_000,
+        maxCascadeMs: 60_000,
       });
 
       const toolUsed = sanitizePlainText(res.json.toolUsed, 40, true) || `${role}_tool`;
@@ -1107,7 +1094,7 @@ Return STRICT JSON:
       });
       this.scheduleBroadcast();
     } catch (err) {
-      const msg = redactSecrets(err, [env.GEMINI_API_KEY, env.CREATOR_HMAC_SECRET]);
+      const msg = redactSecrets(err, [env.HERMES_AGENT_TOKEN, env.CREATOR_HMAC_SECRET]);
       setStage("error", 0, "error", msg.slice(0, 260));
       this.appendLog({
         agentId,
@@ -1180,7 +1167,12 @@ Return STRICT JSON:
         const res = await fetch(`${this.leadAgent.endpoint}/v1/chat/completions`, {
           method: "POST",
           signal: AbortSignal.timeout(35_000),
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            ...(env.HERMES_AGENT_TOKEN?.trim()
+              ? { authorization: `Bearer ${env.HERMES_AGENT_TOKEN!.trim()}` }
+              : {}),
+          },
           body: JSON.stringify({
             model: this.leadAgent.model || "hermes-agent",
             messages: [
@@ -1228,34 +1220,12 @@ Return STRICT JSON:
       }
     }
 
-    // 2. Hybrid Swarm orchestration via Gemini API
-    const apiKey = env.GEMINI_API_KEY;
-    if (!apiKey) {
-      leadTaskAgent.status = "error";
-      leadTaskAgent.finishedAt = Date.now();
-      leadTaskAgent.updatedAt = Date.now();
-      this.leadAgent.status = "error";
-      const errMsg = `No local Hermes daemon is reachable at ${this.leadAgent.endpoint} and GEMINI_API_KEY is not configured.`;
-      leadTaskAgent.output = errMsg;
-      this.appendLog({
-        agentId: leadTaskAgent.id,
-        agentName: leadTaskAgent.name,
-        role: leadTaskAgent.role,
-        kind: "error",
-        message: errMsg,
-      });
-      this.scheduleBroadcast();
-      return { ok: false, summary: "", spawnedIds, error: errMsg, snapshot: this.getSnapshot() };
-    }
-
+    // 2. Hybrid Swarm orchestration via the local Hermes agent gateway
     try {
-      const planRes = await callGeminiWithFallbacks({
-        apiKey,
+      const planRes = await callHermesAgentForJson({
+        env,
         mode: "director",
-        hydrogenModel: env.HYDROGEN_MODEL,
-        hydrogenModels: env.HYDROGEN_MODELS,
-        primaryModel: env.ARGON_MODEL,
-        fallbackModel: env.FALLBACK_MODEL,
+        callerLabel: "dispatch_plan",
         systemPrompt: `You are Hermes Prime coordinating a working Task Agent (${leadTaskAgent.name}) and helper Sub-Agents on Hermes Island.
 Give the Task Agent a short descriptive team name (2-3 words max) and decompose the user's request into 2 to 3 focused helper sub-agent tasks, picking roles from: "architect", "coder", "researcher", "critic", "tool_runner", "memory".
 Return STRICT JSON:
@@ -1268,7 +1238,7 @@ Return STRICT JSON:
 }`,
         userText: prompt,
         maxOutputTokens: 2048,
-        maxCascadeMs: 25_000,
+        maxCascadeMs: 60_000,
       });
 
       const leadTitle = sanitizePlainText(planRes.json.leadName, 32, true);
@@ -1315,17 +1285,14 @@ Return STRICT JSON:
       const subResults = await Promise.all(
         activeHelpers.map(async (sub) => {
           try {
-            const subRes = await callGeminiWithFallbacks({
-              apiKey,
+            const subRes = await callHermesAgentForJson({
+              env,
               mode: "director",
-              hydrogenModel: env.HYDROGEN_MODEL,
-              hydrogenModels: env.HYDROGEN_MODELS,
-              primaryModel: env.ARGON_MODEL,
-              fallbackModel: env.FALLBACK_MODEL,
+              callerLabel: `helper_${sub.name}`,
               systemPrompt: `You are ${sub.name} (role: ${sub.role}), a Hermes helper sub-agent assisting ${leadTaskAgent.name}. Deliver a concise, concrete result for your helper sub-task in JSON: {"output": "2-4 crisp sentences"}`,
               userText: `Parent goal: ${prompt}\nAssisting agent: ${leadTaskAgent.name}\nYour helper task: ${sub.task}`,
               maxOutputTokens: 2048,
-              maxCascadeMs: 25_000,
+              maxCascadeMs: 60_000,
             });
             const outText =
               sanitizePlainText(subRes.json.output, 900, false) || "Helper sub-task completed.";
@@ -1347,7 +1314,7 @@ Return STRICT JSON:
             sub.status = "error";
             sub.finishedAt = Date.now();
             sub.updatedAt = Date.now();
-            sub.output = redactSecrets(err, [apiKey]);
+            sub.output = redactSecrets(err, [env.HERMES_AGENT_TOKEN]);
             this.scheduleBroadcast();
             return { name: sub.name, role: sub.role, output: sub.output };
           }
@@ -1361,17 +1328,14 @@ Return STRICT JSON:
       this.leadAgent.status = "thinking";
       this.scheduleBroadcast();
 
-      const synthRes = await callGeminiWithFallbacks({
-        apiKey,
+      const synthRes = await callHermesAgentForJson({
+        env,
         mode: "director",
-        hydrogenModel: env.HYDROGEN_MODEL,
-        hydrogenModels: env.HYDROGEN_MODELS,
-        primaryModel: env.ARGON_MODEL,
-        fallbackModel: env.FALLBACK_MODEL,
+        callerLabel: "dispatch_synthesis",
         systemPrompt: `You are ${leadTaskAgent.name}, synthesizing outputs from your helper sub-agents for Hermes Prime. Return STRICT JSON: {"summary": "clear, direct final synthesis for the user"}`,
         userText: `User request: ${prompt}\n\nHelper sub-agent reports:\n${subResults.map((r) => `- ${r.name} (${r.role}): ${r.output}`).join("\n")}`,
         maxOutputTokens: 2048,
-        maxCascadeMs: 22_000,
+        maxCascadeMs: 60_000,
       });
 
       const finalSummary =
@@ -1404,7 +1368,7 @@ Return STRICT JSON:
         snapshot: this.getSnapshot(),
       };
     } catch (err) {
-      const msg = redactSecrets(err, [apiKey, env.CREATOR_HMAC_SECRET]);
+      const msg = redactSecrets(err, [env.HERMES_AGENT_TOKEN, env.CREATOR_HMAC_SECRET]);
       leadTaskAgent.status = "error";
       leadTaskAgent.output = msg.slice(0, 260);
       leadTaskAgent.finishedAt = Date.now();
