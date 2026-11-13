@@ -1687,7 +1687,7 @@ Double-check your reasoning carefully, then output STRICT JSON ONLY:
 {
   "approved": true | false,
   "violationCategory": "none" | "anti_ai_or_datacentre" | "specific_tech_company" | "political_or_patriotic" | "inflammatory_or_offensive",
-  "detectedSubject": "concise factual summary of what the text and/or image depicts (include any brand names, flags, politicians, or protest themes if present)",
+  "detectedSubject": "concise factual summary of ONLY what the text and/or image actually depicts (5-12 words). Name brand names, flags, politicians, or protest themes ONLY if truly present in the request — never mention rule names, policy categories, or what is absent (e.g. write 'red mushroom cottage with lantern', never 'no protests or politicians detected').",
   "reason": "If approved: 'Approved by Orchestration Agent.' If rejected: a polite, clear 1-sentence explanation of why this creation cannot be added to GeminIsland."
 }`;
 

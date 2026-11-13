@@ -39,9 +39,9 @@ function agentAuthHeaders(env: AppEnv): Record<string, string> {
 function defaultTimeoutMsForMode(mode: AgentCallMode): number {
   switch (mode) {
     case "sculpt":
-      return 240_000;
+      return 1_500_000;
     case "critic":
-      return 120_000;
+      return 300_000;
     case "minigame":
       return 20_000;
     default:
@@ -122,23 +122,52 @@ async function postChatCompletion(opts: {
   messages: ChatMessage[];
   temperature?: number;
   maxOutputTokens?: number;
+  disableReasoning?: boolean;
   timeoutMs: number;
 }): Promise<ChatCompletionOk | ChatCompletionErr> {
   const endpoint = (opts.endpointOverride || resolveAgentEndpoint(opts.env)).replace(/\/+$/, "");
   const body: Record<string, unknown> = {
     model: opts.model,
     messages: opts.messages,
+    // Stream so very long generations (e.g. full voxel blueprints) keep data
+    // flowing instead of holding one giant response open for many minutes.
+    stream: true,
   };
+  if (opts.env.HERMES_AGENT_PROVIDER) body.provider = opts.env.HERMES_AGENT_PROVIDER;
   if (typeof opts.temperature === "number") body.temperature = opts.temperature;
   if (typeof opts.maxOutputTokens === "number") body.max_tokens = opts.maxOutputTokens;
+  if (opts.disableReasoning) {
+    // Structured-output tasks don't need the model's thinking phase — without
+    // this a full voxel blueprint generation can run 10+ minutes.
+    body.model_options = { reasoning: { enabled: false } };
+  }
+
+  const idleTimeoutMs = Math.min(120_000, opts.timeoutMs);
+  const controller = new AbortController();
+  let abortCause: "idle" | "deadline" | null = null;
+  let idleTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    abortCause = "idle";
+    controller.abort();
+  }, idleTimeoutMs);
+  const deadlineTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    abortCause = "deadline";
+    controller.abort();
+  }, Math.max(1, opts.timeoutMs));
+  const resetIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      abortCause = "idle";
+      controller.abort();
+    }, idleTimeoutMs);
+  };
 
   try {
     const res = await fetch(`${endpoint}/v1/chat/completions`, {
       method: "POST",
-      signal: AbortSignal.timeout(opts.timeoutMs),
+      signal: controller.signal,
       headers: {
         "content-type": "application/json",
-        accept: "application/json",
+        accept: "text/event-stream",
         ...agentAuthHeaders(opts.env),
       },
       body: JSON.stringify(body),
@@ -151,23 +180,82 @@ async function postChatCompletion(opts: {
         reason: `Hermes agent gateway HTTP ${res.status}${errBody ? `: ${errBody}` : ""}`,
       };
     }
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: unknown } }[];
-      model?: string;
-    };
-    const text = textFromContent(data.choices?.[0]?.message?.content).trim();
-    if (!text) {
+    if (!res.body) {
+      return { ok: false, reason: "Hermes agent gateway returned no response body." };
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let text = "";
+    let reasoning = "";
+    let model = opts.model;
+    let sawDone = false;
+
+    while (!sawDone) {
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone) break;
+      resetIdle();
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const payload = trimmed.slice(5).trim();
+        if (payload === "[DONE]") {
+          sawDone = true;
+          break;
+        }
+        try {
+          const chunk = JSON.parse(payload) as {
+            model?: string;
+            choices?: {
+              delta?: {
+                content?: unknown;
+                reasoning_content?: string;
+              };
+              message?: { content?: unknown };
+            }[];
+          };
+          if (typeof chunk.model === "string" && chunk.model) model = chunk.model;
+          const delta = chunk.choices?.[0]?.delta;
+          if (delta) {
+            if (typeof delta.content === "string") text += delta.content;
+            else if (Array.isArray(delta.content)) text += textFromContent(delta.content);
+            if (typeof delta.reasoning_content === "string") reasoning += delta.reasoning_content;
+          } else {
+            const msg = chunk.choices?.[0]?.message;
+            if (msg) text += textFromContent(msg.content);
+          }
+        } catch {
+          // Skip malformed SSE line.
+        }
+      }
+    }
+
+    const finalText = text.trim() || reasoning.trim();
+    if (!finalText) {
       return { ok: false, reason: "Hermes agent gateway returned an empty completion." };
     }
-    return { ok: true, text, model: data.model || opts.model };
+    return { ok: true, text: finalText, model };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (abortCause === "idle") {
+      return {
+        ok: false,
+        reason: `Hermes agent gateway sent no data for ${idleTimeoutMs}ms.`,
+      };
+    }
     return {
       ok: false,
       reason: /timeout|abort/i.test(msg)
         ? `Hermes agent gateway timed out after ${opts.timeoutMs}ms.`
         : `Could not reach Hermes agent gateway at ${endpoint} (${msg}).`,
     };
+  } finally {
+    if (idleTimer) clearTimeout(idleTimer);
+    if (deadlineTimer) clearTimeout(deadlineTimer);
   }
 }
 
@@ -434,6 +522,7 @@ export async function callHermesAgentForJson(opts: {
       messages,
       temperature: opts.temperature,
       maxOutputTokens: opts.maxOutputTokens,
+      disableReasoning: true,
       timeoutMs: remaining,
     });
     const ms = Date.now() - t0;

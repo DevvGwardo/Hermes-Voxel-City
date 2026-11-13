@@ -278,7 +278,7 @@ export async function sculptWithArgon(
           : {}),
         temperature: 0.42,
         maxOutputTokens: 32_768,
-        maxCascadeMs: 240_000,
+        maxCascadeMs: 1_500_000,
         validateJson: validateSculptBlueprintJson,
       });
       break;
@@ -443,7 +443,7 @@ export async function sculptWithArgon(
           : {}),
         temperature: 0.35,
         maxOutputTokens: 40_960,
-        maxCascadeMs: 240_000,
+        maxCascadeMs: 1_500_000,
         validateJson: validateSculptBlueprintJson,
       });
     } catch (retryErr) {

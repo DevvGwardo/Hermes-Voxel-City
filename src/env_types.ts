@@ -5,6 +5,7 @@ export interface AppEnv {
   HERMES_HOME?: string;
   HERMES_AGENT_TOKEN?: string;
   HERMES_AGENT_MODEL?: string;
+  HERMES_AGENT_PROVIDER?: string;
 }
 
 export function resolveRuntimeEnv(): AppEnv {
@@ -15,5 +16,6 @@ export function resolveRuntimeEnv(): AppEnv {
     HERMES_HOME: process.env.HERMES_HOME?.trim() || undefined,
     HERMES_AGENT_TOKEN: process.env.HERMES_AGENT_TOKEN?.trim() || undefined,
     HERMES_AGENT_MODEL: process.env.HERMES_AGENT_MODEL?.trim() || undefined,
+    HERMES_AGENT_PROVIDER: process.env.HERMES_AGENT_PROVIDER?.trim() || undefined,
   };
 }
