@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Hermes Island — Local Hermes Agent &amp; Sub-Agents</title>
+    <meta
+      name="description"
+      content="3D sunlit voxel campus centered around your local Hermes Agent and autonomous Hermes sub-agents."
+    />
+    <meta name="theme-color" content="#ffffff" />
+
+    <!-- Favicons & App Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Open Graph / Apple Messages / WhatsApp / Discord -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Hermes Island" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="Hermes Island" />
+    <meta
+      property="og:description"
+      content="3D sunlit voxel campus centered around your local Hermes Agent and autonomous Hermes sub-agents."
+    />
+
+    <!-- X / Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Hermes Island" />
+    <meta
+      name="twitter:description"
+      content="3D sunlit voxel campus centered around your local Hermes Agent and autonomous Hermes sub-agents."
+    />
+
+    <!-- Apple Web App -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Hermes Island" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!-- Endless Animated Sunlit Grass Voxel Canvas -->
+    <canvas id="world-canvas" aria-label="Shared animated 3D voxel grass world"></canvas>
+
+    <!-- Top-Left Hermes Agent Workspace Bar + Live Follow Controls -->
+    <div class="hermes-top-wrap">
+      <div id="hermes-bar" class="hermes-bar" role="region" aria-label="Hermes Agent control bar">
+        <button type="button" id="hermes-toggle-btn" class="hermes-brand-btn" title="Open Hermes Swarm workspace">
+          <span id="hermes-status-dot" class="hermes-dot" aria-hidden="true"></span>
+          <span class="hermes-brand-copy">
+            <span class="hermes-brand-title">Hermes Agent</span>
+            <span id="hermes-bar-meta" class="hermes-brand-meta">Initializing swarm…</span>
+          </span>
+        </button>
+        <button type="button" id="hermes-open-btn" class="hermes-bar-action">Command</button>
+        <button type="button" id="hermes-quick-spawn-btn" class="hermes-bar-action hermes-bar-action-primary">+ Sub-Agent</button>
+      </div>
+
+      <div id="hermes-follow-bar" class="hermes-follow-bar" role="region" aria-label="Following agent camera lock" hidden>
+        <span class="hermes-follow-dot" aria-hidden="true"></span>
+        <span class="hermes-follow-copy">
+          <span class="hermes-follow-label">Following <strong id="hermes-follow-name">Hermes Prime</strong></span>
+          <span id="hermes-follow-meta" class="hermes-follow-meta"></span>
+        </span>
+        <button type="button" id="hermes-follow-next-btn" class="hermes-bar-action" title="Cycle to next agent or sub-agent">Next</button>
+        <button type="button" id="hermes-follow-stop-btn" class="hermes-bar-action hermes-follow-stop-btn" aria-label="Stop following">Stop</button>
+      </div>
+    </div>
+
+    <!-- Collapsible Left Hermes Command Drawer -->
+    <aside id="hermes-drawer" class="hermes-drawer" aria-label="Hermes Command Workspace" hidden>
+      <header class="hermes-drawer-head">
+        <div>
+          <h2 class="hermes-drawer-title">Hermes Swarm</h2>
+          <p id="hermes-drawer-subtitle" class="hermes-drawer-subtitle">Lead orchestrator &amp; local sub-agents</p>
+        </div>
+        <button type="button" id="hermes-close-btn" class="icon-close-btn" aria-label="Close Hermes workspace">&times;</button>
+      </header>
+
+      <div class="hermes-tabs" role="tablist" aria-label="Hermes workspace sections">
+        <button type="button" class="hermes-tab is-active" data-hermes-tab="swarm" role="tab" aria-selected="true">Swarm</button>
+        <button type="button" class="hermes-tab" data-hermes-tab="dispatch" role="tab" aria-selected="false">Dispatch</button>
+        <button type="button" class="hermes-tab" data-hermes-tab="local" role="tab" aria-selected="false">Local</button>
+      </div>
+
+      <div class="hermes-drawer-body">
+        <!-- Tab 1: Swarm -->
+        <section id="hermes-panel-swarm" class="hermes-panel" role="tabpanel">
+          <div id="hermes-lead-row" class="hermes-lead-row"></div>
+
+          <form id="hermes-spawn-form" class="hermes-spawn-form">
+            <div class="hermes-form-row">
+              <input
+                type="text"
+                id="hermes-spawn-name"
+                class="hermes-input"
+                maxlength="32"
+                placeholder="Agent or helper name (optional)"
+                aria-label="Agent or sub-agent name"
+              />
+              <select id="hermes-spawn-role" class="hermes-select" aria-label="Agent role">
+                <option value="researcher">Researcher</option>
+                <option value="coder">Coder</option>
+                <option value="architect">Architect</option>
+                <option value="critic">Critic</option>
+                <option value="memory">Memory</option>
+                <option value="tool_runner">Tool Runner</option>
+                <option value="sculptor">Sculptor</option>
+              </select>
+            </div>
+            <div class="hermes-form-row hermes-form-row-parent">
+              <label for="hermes-spawn-parent" class="hermes-inline-label">Helping</label>
+              <select id="hermes-spawn-parent" class="hermes-select" aria-label="Parent agent to help">
+                <option value="hermes-prime">Hermes Prime (Top-level agent)</option>
+              </select>
+            </div>
+            <div class="hermes-form-row hermes-form-row-task">
+              <input
+                type="text"
+                id="hermes-spawn-task"
+                class="hermes-input"
+                maxlength="240"
+                placeholder="Assign task for new agent or helper…"
+                aria-label="Sub-agent task"
+              />
+              <button type="submit" id="hermes-spawn-submit" class="hermes-btn hermes-btn-dark">Spawn</button>
+            </div>
+          </form>
+
+          <div id="hermes-subagent-list" class="hermes-list" aria-live="polite"></div>
+        </section>
+
+        <!-- Tab 2: Dispatch -->
+        <section id="hermes-panel-dispatch" class="hermes-panel" role="tabpanel" hidden>
+          <form id="hermes-dispatch-form" class="hermes-dispatch-form">
+            <textarea
+              id="hermes-dispatch-input"
+              class="hermes-textarea"
+              rows="3"
+              maxlength="750"
+              placeholder="Ask Hermes Prime to analyze, plan, or delegate across sub-agents…"
+              aria-label="Task for Hermes Prime"
+            ></textarea>
+            <div class="hermes-dispatch-actions">
+              <span id="hermes-dispatch-mode-note" class="hermes-muted-note">Routes via local Hermes daemon or hybrid swarm</span>
+              <button type="submit" id="hermes-dispatch-btn" class="hermes-btn hermes-btn-dark">Dispatch</button>
+            </div>
+          </form>
+
+          <div id="hermes-dispatch-reply" class="hermes-reply" hidden></div>
+
+          <div class="hermes-log-head">Live Execution Trace</div>
+          <div id="hermes-log-list" class="hermes-log-list"></div>
+        </section>
+
+        <!-- Tab 3: Local Agent Bridge -->
+        <section id="hermes-panel-local" class="hermes-panel" role="tabpanel" hidden>
+          <form id="hermes-probe-form" class="hermes-probe-form">
+            <label for="hermes-endpoint-input" class="hermes-field-label">Local Hermes Endpoint</label>
+            <div class="hermes-form-row hermes-form-row-task">
+              <input
+                type="url"
+                id="hermes-endpoint-input"
+                class="hermes-input hermes-mono"
+                value="http://127.0.0.1:8642"
+                placeholder="http://127.0.0.1:8642"
+                aria-label="Local Hermes loopback URL"
+              />
+              <button type="submit" id="hermes-probe-btn" class="hermes-btn hermes-btn-dark">Probe</button>
+            </div>
+            <div class="hermes-presets" role="group" aria-label="Common local ports">
+              <button type="button" class="hermes-preset-btn" data-endpoint="http://127.0.0.1:8642">:8642</button>
+              <button type="button" class="hermes-preset-btn" data-endpoint="http://127.0.0.1:8000">:8000</button>
+              <button type="button" class="hermes-preset-btn" data-endpoint="http://127.0.0.1:8080">:8080</button>
+              <button type="button" class="hermes-preset-btn" data-endpoint="http://127.0.0.1:11434">:11434</button>
+            </div>
+          </form>
+
+          <dl id="hermes-local-diag" class="hermes-diag-list"></dl>
+
+          <div class="hermes-hook-box">
+            <div class="hermes-hook-head">
+              <span>Stream Local Hermes Sub-Agents via Hook</span>
+              <button type="button" id="hermes-copy-hook-btn" class="hermes-preset-btn">Copy curl</button>
+            </div>
+            <pre id="hermes-hook-code" class="hermes-code-block"></pre>
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <!-- Camera Controls (Desktop + Mobile: Pan / Orbit / Walk + Recentre) -->
+    <div id="cam-controls" class="cam-controls" role="toolbar" aria-label="Camera controls">
+      <div class="cam-mode-group" role="group" aria-label="Camera mode">
+        <button
+          type="button"
+          id="cam-pan-btn"
+          class="cam-mode-btn is-active"
+          aria-pressed="true"
+          title="Move camera"
+        >
+          <svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3" />
+          </svg>
+          <span>Pan</span>
+        </button>
+        <button
+          type="button"
+          id="cam-orbit-btn"
+          class="cam-mode-btn"
+          aria-pressed="false"
+          title="Spin and tilt camera"
+        >
+          <svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <polyline points="21 3 21 9 15 9" />
+          </svg>
+          <span>Orbit</span>
+        </button>
+        <button
+          type="button"
+          id="cam-walk-btn"
+          class="cam-mode-btn"
+          aria-pressed="false"
+          title="Walk in first person"
+        >
+          <svg class="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="4.5" r="2" />
+            <path d="M8.5 20.5L10.8 14l3.2 2.8.6 3.7" />
+            <path d="M10.8 14l1-5.2" />
+            <path d="M7.5 12.4l3.8-3.4 3.4 1 2.3 2.2" />
+          </svg>
+          <span>Walk</span>
+        </button>
+      </div>
+
+      <button
+        type="button"
+        id="recenter-btn"
+        class="cam-recenter-btn"
+        aria-label="Recentre camera"
+        title="Recentre camera"
+      >
+        <svg class="cam-icon cam-compass-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" stroke-opacity="0.35" />
+          <g id="recenter-compass">
+            <polygon points="12,4.2 14.7,12 9.3,12" fill="#d94e43" />
+            <polygon points="12,19.8 14.7,12 9.3,12" fill="currentColor" fill-opacity="0.55" />
+          </g>
+        </svg>
+        <span>Recentre</span>
+      </button>
+
+      <button
+        type="button"
+        id="avatar-btn"
+        class="cam-recenter-btn cam-avatar-btn"
+        aria-label="Customize character"
+        title="Customize character"
+      >
+        <svg class="cam-icon cam-avatar-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="7.5" y="3.5" width="9" height="8" rx="2" />
+          <path d="M5.5 20.5v-2.2a3.8 3.8 0 0 1 3.8-3.8h5.4a3.8 3.8 0 0 1 3.8 3.8v2.2" />
+        </svg>
+        <span class="avatar-swatch-dot" id="avatar-swatch-dot" aria-hidden="true"></span>
+        <span>Character</span>
+      </button>
+
+      <div id="quality-group" class="cam-mode-group quality-mode-group" role="group" aria-label="Graphics quality">
+        <button
+          type="button"
+          class="cam-mode-btn is-active"
+          data-quality-mode="auto"
+          aria-pressed="true"
+          title="Adaptive 60 FPS with full crisp visuals"
+        >Auto</button>
+        <button
+          type="button"
+          class="cam-mode-btn"
+          data-quality-mode="high"
+          aria-pressed="false"
+          title="Maximum crisp visuals (AO &amp; Bloom)"
+        >High</button>
+        <button
+          type="button"
+          class="cam-mode-btn"
+          data-quality-mode="fast"
+          aria-pressed="false"
+          title="Fastest 60 FPS mode"
+        >Fast</button>
+      </div>
+
+      <div id="online-pill" class="online-pill" title="Players online" hidden>
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="online-count">1</span>
+      </div>
+    </div>
+
+    <!-- Hover nameplate + optional live API readout -->
+    <div id="hover-card" class="hover-card" hidden>
+      <div id="hover-name" class="hover-name"></div>
+      <div id="hover-feed" class="hover-feed" hidden></div>
+      <div id="hover-status" class="hover-status"></div>
+    </div>
+
+    <!-- Transient world note -->
+    <div id="weave-toast" class="weave-toast" role="status" aria-live="polite" hidden></div>
+
+    <!-- Mobile First-Person Walk Joystick (forward/back + strafe) -->
+    <div id="walk-joystick" class="walk-joystick" aria-label="Walk movement joystick" hidden>
+      <svg class="walk-joystick-svg" viewBox="-64 -64 128 128" fill="none" aria-hidden="true">
+        <circle cx="0" cy="0" r="55" stroke="#161b18" stroke-opacity="0.1" stroke-width="1.2" />
+        <polyline id="walk-joy-up" class="walk-joy-chevron" points="-7,-41 0,-49 7,-41" />
+        <polyline id="walk-joy-down" class="walk-joy-chevron" points="-7,41 0,49 7,41" />
+        <polyline id="walk-joy-left" class="walk-joy-chevron" points="-41,-7 -49,0 -41,7" />
+        <polyline id="walk-joy-right" class="walk-joy-chevron" points="41,-7 49,0 41,7" />
+        <g id="walk-joystick-knob" transform="translate(0 0)">
+          <circle cx="0" cy="3" r="22" fill="#0f1c12" fill-opacity="0.22" />
+          <circle cx="0" cy="0" r="21.5" fill="#ffffff" stroke="#161b18" stroke-opacity="0.18" stroke-width="1.5" />
+          <circle cx="0" cy="0" r="7.5" fill="#161b18" fill-opacity="0.07" stroke="#161b18" stroke-opacity="0.22" stroke-width="1.4" />
+        </g>
+      </svg>
+    </div>
+
+    <!-- Subtle First-Person Exit Hint (Desktop Walk Mode) -->
+    <button type="button" id="walk-esc-hint" class="walk-esc-hint" aria-label="Press Escape to exit first-person view" hidden>
+      <kbd class="walk-esc-key">Esc</kbd><span>to exit view</span>
+    </button>
+
+    <!-- Contextual First-Person Interaction Prompt -->
+    <button type="button" id="interact-prompt" class="interact-prompt" hidden>
+      <kbd id="interact-key" class="interact-key">E</kbd><span id="interact-label">Enter</span>
+    </button>
+
+    <!-- Bottom-Anchored Explore & Build Dock (never blocks the 3D meadow) -->
+    <div class="bottom-dock">
+      <!-- 1. Explore-first single Add button -->
+      <button type="button" id="add-btn" class="dock-pill dock-pill-add">
+        + Add
+      </button>
+
+      <!-- 2. Spot-picking prompt pill -->
+      <div id="pick-spot-pill" class="dock-pill dock-pill-pick" hidden>
+        <span>Click where to add</span>
+        <button type="button" id="cancel-pick-btn" class="icon-close-btn" aria-label="Cancel spot selection">
+          &times;
+        </button>
+      </div>
+
+      <!-- 3. Compact bottom building box -->
+      <section id="bottom-builder" class="bottom-builder" aria-label="Add creation" hidden>
+        <div class="builder-bar">
+          <button type="button" id="move-spot-btn" class="spot-chip-btn">Move spot</button>
+          <button type="button" id="close-builder-btn" class="icon-close-btn" aria-label="Close">
+            &times;
+          </button>
+        </div>
+
+        <div class="builder-row">
+          <label id="drop-zone" class="drop-tile" for="image-input" title="Upload image">
+            <input id="image-input" type="file" accept="image/*" hidden />
+            <div id="drop-empty" class="drop-tile-empty">
+              <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="3" />
+                <circle cx="8.5" cy="9.5" r="1.5" />
+                <path d="M21 15l-4.5-4.5L9 18" />
+              </svg>
+              <span>Photo</span>
+            </div>
+            <div id="drop-preview-wrap" class="drop-preview-wrap" hidden>
+              <img id="drop-preview-img" alt="Selected subject" />
+              <button type="button" id="clear-image-btn" class="clear-img-btn" aria-label="Remove image">
+                &times;
+              </button>
+            </div>
+          </label>
+
+          <textarea
+            id="prompt-input"
+            rows="2"
+            maxlength="480"
+            placeholder="Describe what to add…"
+            aria-label="Describe what to add"
+          ></textarea>
+        </div>
+
+        <p id="form-error" class="form-error" role="alert" hidden></p>
+
+        <p class="upload-disclaimer">
+          By using this feature, you confirm that you have the necessary rights to any content that you upload. Do not generate content that infringes on others’ intellectual property or privacy rights. Your use of this generative AI service is subject to our <a href="https://policies.google.com/terms/generative-ai/use-policy" target="_blank" rel="noopener noreferrer">Prohibited Use Policy</a>. Please note that uploads, including those from Google Workspace, may be used to develop and improve Google products and services in accordance with our <a href="https://aistudio.google.com/docs/terms?e=0" target="_blank" rel="noopener noreferrer">terms</a>.
+        </p>
+
+        <button type="button" id="sculpt-btn" class="primary-btn">Build</button>
+      </section>
+
+      <!-- 4. Building in background pill -->
+      <div id="building-pill" class="dock-pill dock-pill-building" role="status" aria-live="polite" hidden>
+        <span class="pill-spinner" aria-hidden="true"></span>
+        <span class="building-pill-copy">
+          <span id="building-pill-label" class="building-pill-title">Approving query…</span>
+          <span id="building-pill-sub" class="building-pill-sub">Hermes sub-agents sculpting voxels</span>
+        </span>
+      </div>
+
+      <!-- 5. Ready -> Click to fly camera to it -->
+      <button type="button" id="ready-goto-btn" class="dock-pill dock-pill-ready" hidden>
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="ready-goto-label">Ready · Go to creation</span>
+      </button>
+
+      <!-- 6. Locate existing creation -->
+      <button type="button" id="locate-mine-btn" class="dock-pill dock-pill-placed" hidden>
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="locate-mine-label">Locate yours</span>
+      </button>
+    </div>
+
+    <dialog id="avatar-dialog" class="avatar-dialog" closedby="any" aria-label="Character customizer"></dialog>
+
+    <script type="module" src="/client/app.js"></script>
+  </body>
+</html>

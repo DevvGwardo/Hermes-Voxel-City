@@ -1,0 +1,13 @@
+{
+  "name": "GeminIsland",
+  "short_name": "GeminIsland",
+  "description": "Add your contribution to the voxel world!",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/favicon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/favicon.png", "sizes": "64x64", "type": "image/png" }
+  ]
+}
